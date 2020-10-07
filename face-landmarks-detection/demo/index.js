@@ -19,19 +19,21 @@ import * as faceLandmarksDetection from '@tensorflow-models/face-landmarks-detec
 import Stats from 'stats.js';
 import * as tf from '@tensorflow/tfjs-core';
 import '@tensorflow/tfjs-backend-webgl';
-
+import '@tensorflow/tfjs-backend-cpu';
 import * as tfjsWasm from '@tensorflow/tfjs-backend-wasm';
 
-import {TRIANGULATION} from './triangulation';
+import { TRIANGULATION } from './triangulation';
 
 tfjsWasm.setWasmPaths(
-    `https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@${tfjsWasm.version_wasm}/dist/`);
+  `https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@${tfjsWasm.version_wasm}/dist/`);
 
 const NUM_KEYPOINTS = 468;
 const NUM_IRIS_KEYPOINTS = 5;
 const GREEN = '#32EEDB';
 const RED = "#FF2C35";
-const BLUE = "#157AB3";
+//const BLUE = "#157AB3";
+const BLUE = "#0000FF";
+const WHITE = "#FFFFFF";
 
 function isMobile() {
   const isAndroid = /Android/i.test(navigator.userAgent);
@@ -58,7 +60,7 @@ function drawPath(ctx, points, closePath) {
 }
 
 let model, ctx, videoWidth, videoHeight, video, canvas,
-    scatterGLHasInitialized = false, scatterGL, rafID;
+  scatterGLHasInitialized = false, scatterGL, rafID;
 
 const VIDEO_SIZE = 500;
 const mobile = isMobile();
@@ -80,14 +82,14 @@ if (renderPointcloud) {
 function setupDatGui() {
   const gui = new dat.GUI();
   gui.add(state, 'backend', ['webgl', 'wasm', 'cpu'])
-      .onChange(async backend => {
-        window.cancelAnimationFrame(rafID);
-        await tf.setBackend(backend);
-        requestAnimationFrame(renderPrediction);
-      });
+    .onChange(async backend => {
+      window.cancelAnimationFrame(rafID);
+      await tf.setBackend(backend);
+      requestAnimationFrame(renderPrediction);
+    });
 
   gui.add(state, 'maxFaces', 1, 20, 1).onChange(async val => {
-    model = await faceLandmarksDetection.load('mediapipe-facemesh', {maxFaces: val});
+    model = await faceLandmarksDetection.load('mediapipe-facemesh', { maxFaces: val });
   });
 
   gui.add(state, 'triangulateMesh');
@@ -96,7 +98,7 @@ function setupDatGui() {
   if (renderPointcloud) {
     gui.add(state, 'renderPointcloud').onChange(render => {
       document.querySelector('#scatter-gl-container').style.display =
-          render ? 'inline-block' : 'none';
+        render ? 'inline-block' : 'none';
     });
   }
 }
@@ -123,14 +125,185 @@ async function setupCamera() {
   });
 }
 
+function getLandmarkMeasurements(prediction) {
+
+  //console.log(prediction);
+
+  const mesh = prediction.mesh;
+  const scaledMesh = prediction.scaledMesh;
+  let x, y;
+
+  // Landmark list
+  const landmark_faceL = 454;
+  const landmark_faceR = 234;
+  const landmark_noseL = 278;
+  const landmark_noseR = 48;
+  const landmark_noseTip = 4;
+  const landmark_sellion = 168;
+  const landmark_supramenton = 200;
+
+  // Face height
+  const faceHeight = distance(
+    mesh[landmark_sellion],
+    mesh[landmark_supramenton]);
+
+  const faceHeightScaled = distance(
+    scaledMesh[landmark_sellion],
+    scaledMesh[landmark_supramenton]);
+
+  ctx.fillStyle = BLUE;
+  ctx.strokeStyle = BLUE;
+  ctx.lineWidth = 1;
+  x = scaledMesh[landmark_sellion][0];
+  y = scaledMesh[landmark_sellion][1];
+  ctx.beginPath();
+  ctx.arc(x, y, 3 /* radius */, 0, 2 * Math.PI);
+  ctx.fill();
+  x = scaledMesh[landmark_supramenton][0];
+  y = scaledMesh[landmark_supramenton][1];
+  ctx.beginPath();
+  ctx.arc(x, y, 3 /* radius */, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Face width
+  const faceWidth = distance(
+    mesh[landmark_faceL],
+    mesh[landmark_faceR]);
+
+  const faceWidthScaled = distance(
+    scaledMesh[landmark_faceL],
+    scaledMesh[landmark_faceR]);
+
+  ctx.fillStyle = RED;
+  ctx.strokeStyle = RED;
+  ctx.lineWidth = 1;
+  x = scaledMesh[landmark_faceL][0];
+  y = scaledMesh[landmark_faceL][1];
+  ctx.beginPath();
+  ctx.arc(x, y, 3 /* radius */, 0, 2 * Math.PI);
+  ctx.fill();
+  x = scaledMesh[landmark_faceR][0];
+  y = scaledMesh[landmark_faceR][1];
+  ctx.beginPath();
+  ctx.arc(x, y, 3 /* radius */, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Nose width
+  const noseWidth = distance(
+    mesh[landmark_noseL],
+    mesh[landmark_noseR]);
+
+  const noseWidthScaled = distance(
+    scaledMesh[landmark_noseL],
+    scaledMesh[landmark_noseR]);
+
+  ctx.fillStyle = WHITE;
+  ctx.strokeStyle = WHITE;
+  ctx.lineWidth = 1;
+  x = scaledMesh[landmark_noseL][0];
+  y = scaledMesh[landmark_noseL][1];
+  ctx.beginPath();
+  ctx.arc(x, y, 3 /* radius */, 0, 2 * Math.PI);
+  ctx.fill();
+  x = scaledMesh[landmark_noseR][0];
+  y = scaledMesh[landmark_noseR][1];
+  ctx.beginPath();
+  ctx.arc(x, y, 3 /* radius */, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Nose depth
+  const noseDepthL = distance(
+    mesh[landmark_noseL],
+    mesh[landmark_noseTip]);
+  const noseDepthR = distance(
+    mesh[landmark_noseR],
+    mesh[landmark_noseTip]);
+  const noseDepth = 0.5 * (noseDepthL + noseDepthR);
+
+  const noseDepthScaledL = distance(
+    scaledMesh[landmark_noseL],
+    scaledMesh[landmark_noseTip]);
+  const noseDepthScaledR = distance(
+    scaledMesh[landmark_noseR],
+    scaledMesh[landmark_noseTip]);
+  const noseDepthScaled = 0.5 * (noseDepthScaledL + noseDepthScaledR);
+
+  ctx.fillStyle = WHITE;
+  ctx.strokeStyle = WHITE;
+  ctx.lineWidth = 1;
+  x = scaledMesh[landmark_noseTip][0];
+  y = scaledMesh[landmark_noseTip][1];
+  ctx.beginPath();
+  ctx.arc(x, y, 3 /* radius */, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Iris model
+  if (scaledMesh.length > NUM_KEYPOINTS) {
+
+    ctx.fillStyle = RED;
+    ctx.strokeStyle = RED;
+    let i;
+    for (i = 0; i < 10; i++) {
+      x = scaledMesh[NUM_KEYPOINTS + i][0];
+      y = scaledMesh[NUM_KEYPOINTS + i][1];
+      ctx.beginPath();
+      ctx.arc(x, y, 2 /* radius */, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    // Left iris
+    const leftDiameterX = distance(
+      scaledMesh[NUM_KEYPOINTS + 1],
+      scaledMesh[NUM_KEYPOINTS + 3]);
+    const leftDiameterY = distance(
+      scaledMesh[NUM_KEYPOINTS + 2],
+      scaledMesh[NUM_KEYPOINTS + 4]);
+    const leftDiameter = 0.5 * (leftDiameterX + leftDiameterY);
+    document.getElementById('measure-scaled-iris-diameter-L').innerHTML = "Scaled iris diameter L = " + leftDiameter.toFixed(1);
+
+    // Right iris
+    const rightDiameterX = distance(
+      scaledMesh[NUM_KEYPOINTS + NUM_IRIS_KEYPOINTS + 1],
+      scaledMesh[NUM_KEYPOINTS + NUM_IRIS_KEYPOINTS + 3]);
+    const rightDiameterY = distance(
+      scaledMesh[NUM_KEYPOINTS + NUM_IRIS_KEYPOINTS + 2],
+      scaledMesh[NUM_KEYPOINTS + NUM_IRIS_KEYPOINTS + 4]);
+    const rightDiameter = 0.5 * (rightDiameterX + rightDiameterY);
+    document.getElementById('measure-scaled-iris-diameter-R').innerHTML = "Scaled iris diameter R = " + rightDiameter.toFixed(1);
+
+    // Scale all measurements using the iris diameter
+    // Iris diameter should be 11.7 +- 0.5mm
+    const irisDiameter = 0.5 * (leftDiameter + rightDiameter);
+    const irisScaleFactor = 11.7 / irisDiameter;
+
+    const fh = faceHeightScaled * irisScaleFactor;
+    document.getElementById('measure-face-height').innerHTML = "Sellion-supramenton = " + fh.toFixed(1) + " mm";
+    const fw = faceWidthScaled * irisScaleFactor;
+    document.getElementById('measure-face-width').innerHTML = "Face width = " + fw.toFixed(1) + " mm";
+    const nw = noseWidthScaled * irisScaleFactor;
+    document.getElementById('measure-nose-width').innerHTML = "Nose width = " + nw.toFixed(1) + " mm";
+    const nd = noseDepthScaled * irisScaleFactor;
+    document.getElementById('measure-nose-depth').innerHTML = "Nose depth = " + nd.toFixed(1) + " mm";
+
+  } else {
+
+    document.getElementById('measure-face-height').innerHTML = "Sellion-supramenton = " + faceHeight.toFixed(1) + " mm";
+    document.getElementById('measure-face-width').innerHTML = "Face width = " + faceWidth.toFixed(1) + " mm";
+    document.getElementById('measure-nose-width').innerHTML = "Nose width = " + noseWidth.toFixed(1) + " mm";
+    document.getElementById('measure-nose-depth').innerHTML = "Nose depth = " + noseDepth.toFixed(1) + " mm";
+    document.getElementById('measure-scaled-iris-diameter-L').innerHTML = "";
+    document.getElementById('measure-scaled-iris-diameter-R').innerHTML = "";
+  }
+}
+
 async function renderPrediction() {
   stats.begin();
 
   const predictions = await model.estimateFaces(
-      video, false /* returnTensors */, false /* flipHorizontal */,
-      state.predictIrises);
+    video, false /* returnTensors */, false /* flipHorizontal */,
+    state.predictIrises);
   ctx.drawImage(
-      video, 0, 0, videoWidth, videoHeight, 0, 0, canvas.width, canvas.height);
+    video, 0, 0, videoWidth, videoHeight, 0, 0, canvas.width, canvas.height);
 
   if (predictions.length > 0) {
     predictions.forEach(prediction => {
@@ -161,7 +334,7 @@ async function renderPrediction() {
         }
       }
 
-      if(keypoints.length > NUM_KEYPOINTS) {
+      if (keypoints.length > NUM_KEYPOINTS) {
         ctx.strokeStyle = RED;
         ctx.lineWidth = 1;
 
@@ -177,7 +350,7 @@ async function renderPrediction() {
         ctx.ellipse(leftCenter[0], leftCenter[1], leftDiameterX / 2, leftDiameterY / 2, 0, 0, 2 * Math.PI);
         ctx.stroke();
 
-        if(keypoints.length > NUM_KEYPOINTS + NUM_IRIS_KEYPOINTS) {
+        if (keypoints.length > NUM_KEYPOINTS + NUM_IRIS_KEYPOINTS) {
           const rightCenter = keypoints[NUM_KEYPOINTS + NUM_IRIS_KEYPOINTS];
           const rightDiameterY = distance(
             keypoints[NUM_KEYPOINTS + NUM_IRIS_KEYPOINTS + 2],
@@ -191,6 +364,8 @@ async function renderPrediction() {
           ctx.stroke();
         }
       }
+      // Plots landmarks and update landmark measurements
+      getLandmarkMeasurements(prediction);
     });
 
     if (renderPointcloud && state.renderPointcloud && scatterGL != null) {
@@ -207,7 +382,7 @@ async function renderPrediction() {
 
       if (!scatterGLHasInitialized) {
         scatterGL.setPointColorer((i) => {
-          if(i >= NUM_KEYPOINTS) {
+          if (i >= NUM_KEYPOINTS) {
             return RED;
           }
           return BLUE;
@@ -251,16 +426,16 @@ async function main() {
   ctx.strokeStyle = GREEN;
   ctx.lineWidth = 0.5;
 
-  model = await faceLandmarksDetection.load('mediapipe-facemesh', {maxFaces: state.maxFaces});
+  model = await faceLandmarksDetection.load('mediapipe-facemesh', { maxFaces: state.maxFaces });
   renderPrediction();
 
   if (renderPointcloud) {
     document.querySelector('#scatter-gl-container').style =
-        `width: ${VIDEO_SIZE}px; height: ${VIDEO_SIZE}px;`;
+      `width: ${VIDEO_SIZE}px; height: ${VIDEO_SIZE}px;`;
 
     scatterGL = new ScatterGL(
-        document.querySelector('#scatter-gl-container'),
-        {'rotateOnStart': false, 'selectEnabled': false});
+      document.querySelector('#scatter-gl-container'),
+      { 'rotateOnStart': false, 'selectEnabled': false });
   }
 };
 
