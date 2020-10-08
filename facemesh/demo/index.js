@@ -19,13 +19,12 @@ import * as facemesh from '@tensorflow-models/facemesh';
 import Stats from 'stats.js';
 import * as tf from '@tensorflow/tfjs-core';
 import '@tensorflow/tfjs-backend-webgl';
-
 import * as tfjsWasm from '@tensorflow/tfjs-backend-wasm';
 
-import {TRIANGULATION} from './triangulation';
+import { TRIANGULATION } from './triangulation';
 
 tfjsWasm.setWasmPath(
-    `https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@${tfjsWasm.version_wasm}/dist/tfjs-backend-wasm.wasm`);
+  `https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@${tfjsWasm.version_wasm}/dist/tfjs-backend-wasm.wasm`);
 
 function isMobile() {
   const isAndroid = /Android/i.test(navigator.userAgent);
@@ -48,7 +47,7 @@ function drawPath(ctx, points, closePath) {
 }
 
 let model, ctx, videoWidth, videoHeight, video, canvas,
-    scatterGLHasInitialized = false, scatterGL;
+  scatterGLHasInitialized = false, scatterGL;
 
 const VIDEO_SIZE = 500;
 const mobile = isMobile();
@@ -69,12 +68,12 @@ if (renderPointcloud) {
 function setupDatGui() {
   const gui = new dat.GUI();
   gui.add(state, 'backend', ['wasm', 'webgl', 'cpu'])
-      .onChange(async backend => {
-        await tf.setBackend(backend);
-      });
+    .onChange(async backend => {
+      await tf.setBackend(backend);
+    });
 
   gui.add(state, 'maxFaces', 1, 20, 1).onChange(async val => {
-    model = await facemesh.load({maxFaces: val});
+    model = await facemesh.load({ maxFaces: val });
   });
 
   gui.add(state, 'triangulateMesh');
@@ -82,7 +81,7 @@ function setupDatGui() {
   if (renderPointcloud) {
     gui.add(state, 'renderPointcloud').onChange(render => {
       document.querySelector('#scatter-gl-container').style.display =
-          render ? 'inline-block' : 'none';
+        render ? 'inline-block' : 'none';
     });
   }
 }
@@ -114,7 +113,7 @@ async function renderPrediction() {
 
   const predictions = await model.estimateFaces(video);
   ctx.drawImage(
-      video, 0, 0, videoWidth, videoHeight, 0, 0, canvas.width, canvas.height);
+    video, 0, 0, videoWidth, videoHeight, 0, 0, canvas.width, canvas.height);
 
   if (predictions.length > 0) {
     predictions.forEach(prediction => {
@@ -193,16 +192,16 @@ async function main() {
   ctx.strokeStyle = '#32EEDB';
   ctx.lineWidth = 0.5;
 
-  model = await facemesh.load({maxFaces: state.maxFaces});
+  model = await facemesh.load({ maxFaces: state.maxFaces });
   renderPrediction();
 
   if (renderPointcloud) {
     document.querySelector('#scatter-gl-container').style =
-        `width: ${VIDEO_SIZE}px; height: ${VIDEO_SIZE}px;`;
+      `width: ${VIDEO_SIZE}px; height: ${VIDEO_SIZE}px;`;
 
     scatterGL = new ScatterGL(
-        document.querySelector('#scatter-gl-container'),
-        {'rotateOnStart': false, 'selectEnabled': false});
+      document.querySelector('#scatter-gl-container'),
+      { 'rotateOnStart': false, 'selectEnabled': false });
   }
 };
 
