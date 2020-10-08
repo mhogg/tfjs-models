@@ -89,7 +89,9 @@ function setupDatGui() {
     });
 
   gui.add(state, 'maxFaces', 1, 20, 1).onChange(async val => {
-    model = await faceLandmarksDetection.load('mediapipe-facemesh', { maxFaces: val });
+    model = await faceLandmarksDetection.load(
+      faceLandmarksDetection.SupportedPackages.mediapipeFacemesh,
+      {maxFaces: val});
   });
 
   gui.add(state, 'triangulateMesh');
@@ -425,8 +427,10 @@ async function main() {
   ctx.fillStyle = GREEN;
   ctx.strokeStyle = GREEN;
   ctx.lineWidth = 0.5;
-
-  model = await faceLandmarksDetection.load('mediapipe-facemesh', { maxFaces: state.maxFaces });
+  
+  model = await faceLandmarksDetection.load(
+    faceLandmarksDetection.SupportedPackages.mediapipeFacemesh,
+    {maxFaces: state.maxFaces});
   renderPrediction();
 
   if (renderPointcloud) {
