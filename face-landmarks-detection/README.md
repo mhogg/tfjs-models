@@ -40,10 +40,10 @@ Via npm:
 
 Using `yarn`:
 
-    $ yarn add @tensorflow-models/face-landmarks-detection
+    $ yarn add @tensorflow-models/face-landmarks-detection@0.0.1
 
-    $ yarn add @tensorflow/tfjs-core, @tensorflow/tfjs-converter
-    $ yarn add @tensorflow/tfjs-backend-webgl # or @tensorflow/tfjs-backend-wasm
+    $ yarn add @tensorflow/tfjs-core@2.4.0, @tensorflow/tfjs-converter@2.4.0
+    $ yarn add @tensorflow/tfjs-backend-webgl@2.4.0 # or @tensorflow/tfjs-backend-wasm@2.4.0
 
 ## Usage
 
@@ -65,10 +65,12 @@ Then:
 
 async function main() {
   // Load the MediaPipe Facemesh package.
-  const model = await faceLandmarksDetection.load('mediapipe-facemesh');
+  const model = await faceLandmarksDetection.load(
+    faceLandmarksDetection.SupportedPackages.mediapipeFacemesh);
 
   // Pass in a video stream (or an image, canvas, or 3D tensor) to obtain an
-  // array of detected faces from the MediaPipe graph.
+  // array of detected faces from the MediaPipe graph. If passing in a video
+  // stream, a single prediction per frame will be returned.
   const predictions = await model.estimateFaces(document.querySelector("video"));
 
   if (predictions.length > 0) {
@@ -136,9 +138,13 @@ main();
 
   * **maxFaces** - The maximum number of faces detected in the input. Should be set to the minimum number for performance. Defaults to 10.
 
-  * **iouThreshold** - A float representing the threshold for deciding whether boxes overlap too much in non-maximum suppression. Must be between [0, 1]. Defaults to 0.3.
+  * **iouThreshold** - A float representing the threshold for deciding whether boxes overlap too much in non-maximum suppression. Must be between [0, 1]. Defaults to 0.3. A score of 0 means no overlapping faces will be detected, whereas a score closer to 1 means the model will attempt to detect completely overlapping faces.
 
-  * **scoreThreshold** - A threshold for deciding when to remove boxes based on score in non-maximum suppression. Defaults to 0.75.
+  * **scoreThreshold** - A threshold for deciding when to remove boxes based on score in non-maximum suppression. Defaults to 0.75. Increase this score in order to reduce false positives (detects fewer faces).
+
+  * **modelUrl** - Optional param for specifying a custom facemesh model url or a `tf.io.IOHandler` object.
+
+  * **irisModelUrl** - Optional param for specifying a custom iris model url or a `tf.io.IOHandler` object.
 
 #### Parameters for model.estimateFace()
 
