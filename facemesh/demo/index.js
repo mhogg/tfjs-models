@@ -24,11 +24,14 @@ import * as tfjsWasm from '@tensorflow/tfjs-backend-wasm';
 import * as THREE from 'three';
 
 import { TRIANGULATION } from './triangulation';
-import { tensor2d } from '@tensorflow/tfjs-core';
+import { Log, tensor2d } from '@tensorflow/tfjs-core';
 import { TLSSocket } from 'tls';
 
-import { MovingAverage, average, distanceXY, ScanMeasurements } from './utils';
+import * as ms from './mask_sizing_tool';
+import { MovingAverage, average, distanceXY, LogMeasurements } from './utils';
 import { mask_sizer_F20, mask_sizer_F30, mask_sizer_F30i, mask_sizer_N20, mask_sizer_N30i } from './mask_sizing';
+
+ms.myFunction();
 
 // socket IO
 const socket = io();
@@ -67,35 +70,36 @@ const LMRK = {
 
 // Physical dimension ranges (from mask_sizing.js fit ranges)
 var physicalRanges = {
-  'noseWidth': { 'min': 23, 'max': 55 },
-  'noseDepth': { 'min': 16, 'max': 39 },
+  'noseWidth' : { 'min': 23, 'max':  55 },
+  'noseDepth' : { 'min': 16, 'max':  39 },
   'faceHeight': { 'min': 74, 'max': 110 },
-  'faceWidth': { 'min': 0, 'max': 200 } // No reference
+  'faceWidth' : { 'min': 0,  'max': 200 } // No reference
 }
 
 // Moving averages
 var movingAverage_headMeasuresv1 = {
-  'noseWidth': new MovingAverage(),
-  'noseDepth': new MovingAverage(),
+  'noseWidth' : new MovingAverage(),
+  'noseDepth' : new MovingAverage(),
   'faceHeight': new MovingAverage(),
-  'faceWidth': new MovingAverage()
+  'faceWidth' : new MovingAverage()
 };
 
 var movingAverage_headMeasuresv2 = {
-  'noseWidth': new MovingAverage(),
-  'noseDepth': new MovingAverage(),
+  'noseWidth' : new MovingAverage(),
+  'noseDepth' : new MovingAverage(),
   'faceHeight': new MovingAverage(),
-  'faceWidth': new MovingAverage()
+  'faceWidth' : new MovingAverage()
 };
 
 var movingAverage_headMeasuresv3 = {
-  'noseWidth': new MovingAverage(),
-  'noseDepth': new MovingAverage(),
+  'noseWidth' : new MovingAverage(),
+  'noseDepth' : new MovingAverage(),
   'faceHeight': new MovingAverage(),
-  'faceWidth': new MovingAverage()
+  'faceWidth' : new MovingAverage()
 };
 
-//var scanMeasurementsv1 = new ScanMeasurements('c:\temp\data_v1.json');
+var logMeasurements = new LogMeasurements(socket, 1000);
+document.getElementById("scanButton").onclick = function() {logMeasurements.initialise()};
 
 function isMobile() {
   const isAndroid = /Android/i.test(navigator.userAgent);
@@ -210,6 +214,7 @@ function headCsysFromPoints(ptL, ptR, piL, piR) {
 }
 
 function headCsysMoving(mesh) {
+  // Head coordinate system based on the updated mesh coordinates
   // Landmark coordinates
   let ptL = new THREE.Vector3().fromArray(mesh[LMRK.tragion_L]);
   let ptR = new THREE.Vector3().fromArray(mesh[LMRK.tragion_R]);
@@ -220,11 +225,19 @@ function headCsysMoving(mesh) {
 }
 
 function headCsysCanonical() {
+  // Head coordinate system based on the fixed mesh coordinates
   // Coordinates from canonical_face_model.obj in mediapipe repo
-  let ptL = new THREE.Vector3(7.66418, 0.673132, -2.43587); // tragion_L
+  let ptL = new THREE.Vector3( 7.66418, 0.673132, -2.43587);  // tragion_L
   let ptR = new THREE.Vector3(-7.66418, 0.673132, -2.43587); // tragion_R
-  let piL = new THREE.Vector3(3.32732, 0.104863, 4.11386); // infraorb_L
-  let piR = new THREE.Vector3(-3.32732, 0.104863, 4.11386); // infraorb_R
+  let piL = new THREE.Vector3( 3.32732, 0.104863,  4.11386);   // infraorb_L
+  let piR = new THREE.Vector3(-3.32732, 0.104863,  4.11386);  // infraorb_R
+  // To be consistent with the csys coordinate directions of the moving cys,
+  // we negate the y and z coords (equiv to a 180 deg rotation about x)
+  [ptL, ptR, piL, piR].forEach(p => {  
+    [1,2].forEach(i => {
+      p.setComponent(i, -p.getComponent(i));
+    });
+  });
   // Basis matrix
   return headCsysFromPoints(ptL, ptR, piL, piR);
 }
@@ -246,39 +259,43 @@ function plotLandmark(lmrk, colour = BLUE, radius = 3) {
   ctx.fill();
 }
 
-function getHeadPose(mesh) {
-  let M = headCsysMoving(mesh); // Moving csys
-  let F = headCsysCanonical();  // Fixed csys
-  let f1 = new THREE.Vector3();
-  let f2 = new THREE.Vector3();
-  let f3 = new THREE.Vector3();
-  F.extractBasis(f1, f2, f3);
+function getCoordinateVectors(M) {
   let m1 = new THREE.Vector3();
   let m2 = new THREE.Vector3();
   let m3 = new THREE.Vector3();
   M.extractBasis(m1, m2, m3);
-  // Rotation matrix
+  return [m1, m2, m3];
+}
+
+function getHeadPose(mesh) {
+  // Get fixed and moving csyses
+  let F = headCsysCanonical();  // Fixed csys
+  let M = headCsysMoving(mesh); // Moving csys
+  // Get coordinate vectors
+  let [f1, f2, f3] = getCoordinateVectors(F);
+  let [m1, m2, m3] = getCoordinateVectors(M);
+  // Rotation matrix (4x4)
   let r1 = new THREE.Vector3().set(m1.dot(f1), m1.dot(f2), m1.dot(f3));
   let r2 = new THREE.Vector3().set(m2.dot(f1), m2.dot(f2), m2.dot(f3));
   let r3 = new THREE.Vector3().set(m3.dot(f1), m3.dot(f2), m3.dot(f3));
   let RM = new THREE.Matrix4().makeBasis(r1, r2, r3);
-  // Head planes - Used for intersections
-  let headPlanes = {
-    'frontal': createPlaneAtOrigin(mesh, m3),
-    'median': createPlaneAtOrigin(mesh, m1),
-    'transverse': createPlaneAtOrigin(mesh, m2)
-  };
-  // Euler angles
+  // Euler angles - User for head pose
   let eulerAnglesRad = new THREE.Euler().setFromRotationMatrix(RM, 'XYZ').toArray();
   let eulerAngles = [];
   for (let i = 0; i < 3; i++) {
     let a = THREE.MathUtils.radToDeg(eulerAnglesRad[i]);
-    // NOTE: M is already rotated 180 degrees about F, so correct angles
-    // to within -90 to +90 range
-    if (a > 90) { a = a - 180; }
+    // NOTE: Correct angles to within -90 to +90 range
+    if (a >  90) { a = a - 180; }
     if (a < -90) { a = a + 180; }
     eulerAngles.push(a);
   }
+  // Head planes - Used for intersections
+  let headPlanes = {
+    'frontal'   : createPlaneAtOrigin(mesh, m3),
+    'median'    : createPlaneAtOrigin(mesh, m1),
+    'transverse': createPlaneAtOrigin(mesh, m2)
+  };
+  // Return  
   return [eulerAngles, headPlanes];
 }
 
@@ -553,8 +570,28 @@ function getHeadMeasures(mesh, plotLandmarks = true) {
   return headMeasures;
 }
 
-function getIrisMeasures(scaledMesh) {
+function getEyeAspectRatio(mesh, direction='left') {
+  // Returns eye aspect ratio and boolean if eye is open  
+  let eyeAspectRatio = null;
+  // direction must be 'left' or 'right'
+  direction = direction.toLowerCase();
+  if (!(direction == 'left' || direction == 'right')) { return eyeAspectRatio; }
+  // Ear aspect ratio (EAR) = height / width
+  let labelLower = `${direction}EyeLower0`;
+  let labelUpper = `${direction}EyeUpper0`;
+  let lowerPoints = MESH_ANNOTATIONS[labelLower].map(i => new THREE.Vector3().fromArray(mesh[i]));
+  let upperPoints = MESH_ANNOTATIONS[labelUpper].map(i => new THREE.Vector3().fromArray(mesh[i]));
+  let lowMiddle = lowerPoints[lowerPoints.length / 2 | 0];
+  let uppMiddle = upperPoints[upperPoints.length / 2 | 0];
+  let eyeHeight = lowMiddle.distanceTo(uppMiddle);
+  let eyeWidth  = lowerPoints[0].distanceTo(lowerPoints[lowerPoints.length-1]);
+  eyeAspectRatio = eyeHeight / eyeWidth;
+  // Typically EAR = 0.3 if eye open, and EAR < 0.15 if eye is closed
+  let isEyeOpen = eyeAspectRatio > 0.15;
+  return [eyeAspectRatio, isEyeOpen];
+}
 
+function getIrisMeasures(scaledMesh) {
   // Get iris measures
   let irisDiameters = null;
   let has_iris = scaledMesh.length > NUM_KEYPOINTS;
@@ -586,12 +623,14 @@ function getIrisMeasures(scaledMesh) {
     let irisScaleFactor = IRIS_DIAMETER_AVGERAGE / maxIrisDiameter;
     // Store iris diameters
     irisDiameters = {
-      'left': leftIrisDiameter,
-      'right': rightIrisDiameter,
-      'min': minIrisDiameter,
-      'max': maxIrisDiameter,
-      'avg': avgIrisDiameter,
-      'scale': irisScaleFactor
+      'iris_diam_left' : leftIrisDiameter,
+      'iris_diam_right': rightIrisDiameter,
+      'iris_diam_min'  : minIrisDiameter,
+      'iris_diam_max'  : maxIrisDiameter,
+      'iris_diam_avg'  : avgIrisDiameter,
+      'iris_diam_scale': irisScaleFactor,
+      'ear_left'       : getEyeAspectRatio(scaledMesh, 'left')[0],
+      'ear_right'      : getEyeAspectRatio(scaledMesh, 'right')[0],
     };
     // Show iris
     plotIris(leftIris[0], leftIrisDiameter, RED);
@@ -698,29 +737,6 @@ function scatterPlot(predictions) {
   }
 }
 
-function checkMeasuredValues(headMeasures) {
-
-  // Ensure that the head measurements are within physically realistic ranges
-
-  // Nose width
-  if (headMeasures.noseWidth < noseWidthRange.min) {
-    headMeasures.noseWidth = noseWidthRange.min;
-  }
-  if (headMeasures.noseWidth > noseWidthRange.max) {
-    headMeasures.noseWidth = noseWidthRange.max;
-  }
-
-  // Nose depth
-  if (headMeasures.noseDepth < noseDepthRange.min) {
-    headMeasures.noseDepth = noseDepthRange.min;
-  }
-  if (headMeasures.noseDepth > noseDepthRange.max) {
-    headMeasures.noseDepth = noseDepthRange.max;
-  }
-
-  return headMeasures;
-}
-
 async function run() {
 
   stats.begin();
@@ -746,27 +762,28 @@ async function run() {
       // Update head pose values in html
       updateHeadPoseValues(eulerAngles);
 
+      // Get iris diameter data
+      let irisMeasures = getIrisMeasures(scaledMesh);
+
 
       // Head measurements v1 - Raw mesh data from facemesh model
       // --------------------------------------------------------
       let headMeasuresv1 = getHeadMeasures(mesh, false);
-      // Check measured values are physical
-      //headMeasuresv1 = checkMeasuredValues(headMeasuresv1);
       updateHeadMeasureValues(headMeasuresv1, "unfiltered", 1);
 
       // Write to file
-      //scanMeasurementsv1.updateData(headMeasuresv1);
-      socket.emit('head measures', headMeasuresv1);
+      let angles = {'rotx' : eulerAngles[0], 'roty' : eulerAngles[1], 'rotz' : eulerAngles[2]};
+      logMeasurements.appendData([angles, headMeasuresv1, irisMeasures]);
 
       // Update time averaged
       for (const [key, value] of Object.entries(headMeasuresv1)) {
         movingAverage_headMeasuresv1[key].update(value);
       }
       let filtered_v1 = {
-        'noseWidth': movingAverage_headMeasuresv1.noseWidth.average(),
-        'noseDepth': movingAverage_headMeasuresv1.noseDepth.average(),
+        'noseWidth' : movingAverage_headMeasuresv1.noseWidth.average(),
+        'noseDepth' : movingAverage_headMeasuresv1.noseDepth.average(),
         'faceHeight': movingAverage_headMeasuresv1.faceHeight.average(),
-        'faceWidth': movingAverage_headMeasuresv1.faceWidth.average()
+        'faceWidth' : movingAverage_headMeasuresv1.faceWidth.average()
       };
       updateHeadMeasureValues(filtered_v1, "filtered", 1);
 
@@ -775,11 +792,11 @@ async function run() {
       let nw1 = movingAverage_headMeasuresv1.noseWidth.average();
       let nd1 = movingAverage_headMeasuresv1.noseDepth.average();
       let mask_sizes_v1 = {
-        'F20': mask_sizer_F20(fh1),
-        'F30': mask_sizer_F30(nw1, nd1),
+        'F20' : mask_sizer_F20(fh1),
+        'F30' : mask_sizer_F30(nw1, nd1),
         'F30i': mask_sizer_F30i(nw1, nd1),
-        'N20': mask_sizer_N20(nw1),
-        'N30i': mask_sizer_F30i(nw1, nd1)
+        'N20' : mask_sizer_N20(nw1),
+        'N30i': mask_sizer_N30i(nw1, nd1)
       };
       updateMaskSizeRecommend(mask_sizes_v1, "mask-size-recommend", 1);
 
@@ -789,15 +806,13 @@ async function run() {
       // Get face and head landmarks measurements
       let headMeasuresv2 = getHeadMeasures(scaledMesh);
       // Get iris diameter data
-      let irisMeasures = getIrisMeasures(scaledMesh);
+      //let irisMeasures = getIrisMeasures(scaledMesh);
       // Scale head measures using iris diameter
       if (irisMeasures) {
         for (const [key, value] of Object.entries(headMeasuresv2)) {
           headMeasuresv2[key] = value * irisMeasures.scale * scaleFactorv2;
         }
       }
-      // Check measured values are physical
-      //headMeasuresv2 = checkMeasuredValues(headMeasuresv2);
       // Update html with head measures and iris measures
       updateHeadMeasureValues(headMeasuresv2, "unfiltered", 2);
 
@@ -806,10 +821,10 @@ async function run() {
         movingAverage_headMeasuresv2[key].update(value);
       }
       let filtered_v2 = {
-        'noseWidth': movingAverage_headMeasuresv2.noseWidth.average(),
-        'noseDepth': movingAverage_headMeasuresv2.noseDepth.average(),
+        'noseWidth' : movingAverage_headMeasuresv2.noseWidth.average(),
+        'noseDepth' : movingAverage_headMeasuresv2.noseDepth.average(),
         'faceHeight': movingAverage_headMeasuresv2.faceHeight.average(),
-        'faceWidth': movingAverage_headMeasuresv2.faceWidth.average()
+        'faceWidth' : movingAverage_headMeasuresv2.faceWidth.average()
       }
       updateHeadMeasureValues(filtered_v2, "filtered", 2);
 
@@ -818,11 +833,11 @@ async function run() {
       let nw2 = movingAverage_headMeasuresv2.noseWidth.average();
       let nd2 = movingAverage_headMeasuresv2.noseDepth.average();
       let mask_sizes_v2 = {
-        'F20': mask_sizer_F20(fh2),
-        'F30': mask_sizer_F30(nw2, nd2),
+        'F20' : mask_sizer_F20(fh2),
+        'F30' : mask_sizer_F30(nw2, nd2),
         'F30i': mask_sizer_F30i(nw2, nd2),
-        'N20': mask_sizer_N20(nw2),
-        'N30i': mask_sizer_F30i(nw2, nd2)
+        'N20' : mask_sizer_N20(nw2),
+        'N30i': mask_sizer_N30i(nw2, nd2)
       }
       updateMaskSizeRecommend(mask_sizes_v2, "mask-size-recommend", 2);
 
@@ -843,10 +858,10 @@ async function run() {
 
       let faceHeight = 0;
       let headMeasuresv3 = {
-        'noseWidth': noseWidth,
-        'noseDepth': noseDepthDiag,
+        'noseWidth' : noseWidth,
+        'noseDepth' : noseDepthDiag,
         'faceHeight': faceHeight,
-        'faceWidth': faceWidth
+        'faceWidth' : faceWidth
       }
       // Update html with head measures and iris measures
       updateHeadMeasureValues(headMeasuresv3, "unfiltered", 3);
@@ -858,10 +873,10 @@ async function run() {
         }
       }
       let filtered_v3 = {
-        'noseWidth': movingAverage_headMeasuresv3.noseWidth.average(),
-        'noseDepth': movingAverage_headMeasuresv3.noseDepth.average(),
+        'noseWidth' : movingAverage_headMeasuresv3.noseWidth.average(),
+        'noseDepth' : movingAverage_headMeasuresv3.noseDepth.average(),
         'faceHeight': movingAverage_headMeasuresv2.faceHeight.average(), // Use v2
-        'faceWidth': movingAverage_headMeasuresv2.faceWidth.average()   // Use v2
+        'faceWidth' : movingAverage_headMeasuresv2.faceWidth.average()   // Use v2
       }
       updateHeadMeasureValues(filtered_v3, "filtered", 3);
 
@@ -870,11 +885,11 @@ async function run() {
       let nw3 = movingAverage_headMeasuresv3.noseWidth.average();
       let nd3 = movingAverage_headMeasuresv3.noseDepth.average();
       let mask_sizes_v3 = {
-        'F20': mask_sizer_F20(fh3),
-        'F30': mask_sizer_F30(nw3, nd3),
+        'F20' : mask_sizer_F20(fh3),
+        'F30' : mask_sizer_F30(nw3, nd3),
         'F30i': mask_sizer_F30i(nw3, nd3),
-        'N20': mask_sizer_N20(nw3),
-        'N30i': mask_sizer_F30i(nw3, nd3)
+        'N20' : mask_sizer_N20(nw3),
+        'N30i': mask_sizer_N30i(nw3, nd3)
       }
       updateMaskSizeRecommend(mask_sizes_v3, "mask-size-recommend", 3);
     });

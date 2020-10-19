@@ -91,6 +91,35 @@ limitations under the License.
     background-color: #5d82e7;
     color: white;
   }
+
+  .button {
+    background-color: #ffffff;
+    border: 2px solid #5d82e7;
+    color: #5d82e7;  
+    padding: 12px 28px;
+    margin-top: 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 10pt;
+    border-radius: 12px;
+  }
+
+  .button:hover {
+    background-color: #5d82e7;
+    color: white;
+  }
+
+  .button:focus {
+    outline: none;
+    box-shadow: 0px 0px 2px #ddd;
+  }
+
+  /*
+  .button {
+    transition-duration: 0.4s;
+  }
+  */
 </style>
 </head>
 <body>
@@ -106,6 +135,7 @@ limitations under the License.
           height: auto;
           ">
         </video>
+        
       </div>
       <div id="measurements">
 
@@ -218,6 +248,8 @@ limitations under the License.
           </tr>
           <caption>Table 3 - Unfiltered data</caption>
         </table>
+
+        <button id="scanButton" class="button">Run scan session</button>
 
       </div>
       <!--<div id="scatter-gl-container"></div>-->

@@ -1,6 +1,3 @@
-// file system for writing json files
-const fs = require('browserify-fs');
-
 export class MovingAverage {
 
     constructor(max_length=50) {
@@ -8,7 +5,7 @@ export class MovingAverage {
         this.max_length = max_length; 
     }
     average() {
-        return this.data.reduce((a,b) => (a+b)) / this.data.length;
+        return this.data.reduce((a,b) => (a+b), 0) / this.data.length;
     }
     clear() {
         this.data = [];
@@ -38,36 +35,34 @@ export function distanceXY(a, b) {
     return Math.sqrt(Math.pow((a.x-b.x), 2) + Math.pow((a.y-b.y), 2));
 }
 
-export class ScanMeasurements {
+export class LogMeasurements {
 
-    constructor(filename='data.csv', numberOfFrames=50) {
-        this.filename = filename;
+    constructor(socket, numberOfFrames=50, filename=null) {
+        this.socket = socket;
         this.numFrames = numberOfFrames;
+        this.filename = filename;
+        this.isLogging = false;
+    }
+    initialise() {
+        console.log('Logging started')
+        this.isLogging = true;
         this.currentFrame = 0;
-        this.data = {
-            'noseWidth'  : [],
-            'noseDepth'  : [],
-            'faceHeight' : []
-        };
+        this.socket.emit('log_initialise');
     }
-    updateData(currentData) {
-        // currentData must be an object with the same keys as
-        // this.data, representing the values at the current frame
-        for (const [key, value] of Object.entries(currentData)) {
-            if (Object.keys(this.data).includes(key)) {
-                this.data[key].push(value);
+    appendData(data_array) {
+        if (this.isLogging && this.currentFrame < this.numFrames) {
+            for (let i=0; i<data_array.length; i++) {
+                let data = data_array[i];
+                this.socket.emit('log_appendData', data);
             }
-        }
-        this.currentFrame += 1;
-        if (this.currentFrame == this.numFrames) {
-            this.writeDataToFile();
+            this.currentFrame += 1;
+        } else if (this.isLogging && this.currentFrame == this.numFrames) {
+            this.stopAndSave();
         }
     }
-    writeDataToFile() {
-        let data = JSON.stringify(this.data);
-        fs.writeFile(this.filename, data, (err) => {
-            if (err) throw err;
-            console.log('Data written to file');
-        });
+    stopAndSave() {
+        console.log('Logging stopped')
+        this.isLogging = false;
+        this.socket.emit('log_stopAndSave', this.filename);
     }
 }

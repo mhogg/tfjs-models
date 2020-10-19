@@ -11,18 +11,26 @@ app.get('/*', (req, res) =>
 const server = require('http').createServer(app);
 const io = require('socket.io')(server);
 io.on('connection', (client) => {
-  const headMeasures = [];
-  const sessionID = uuidv4();
-  client.on('head measures', (data) => {
-    // the head measures are available here, to do with what you will
-    // in this example they are added to an array
-    // and saved on disconnect
-    // (prob not the best way as the array can grow in memory indefitely)
-    headMeasures.push(data);
+
+  client.on('log_initialise', () => {
+    console.log('log_initialise');
+    headMeasures = new Object();
+  });  
+
+  client.on('log_appendData', (data) => {
+    for (const [key, value] of Object.entries(data)) {
+      if (!Object.keys(headMeasures).includes(key)) {
+        headMeasures[key] = [];
+      }
+      headMeasures[key].push(value);
+    }
   });
-  client.on('disconnect', () => {
-    console.log('disconnect');
-    fs.writeFileSync(`./${sessionID}.json`, JSON.stringify(headMeasures));
+  
+  client.on('log_stopAndSave', (filename) => {
+    console.log('log_stopAndSave');
+    let fn = filename != null ? filename : uuidv4();
+    fs.writeFileSync(`./${fn}.json`, JSON.stringify(headMeasures));
   });
+
 });
 server.listen(process.env.PORT || 8080);
