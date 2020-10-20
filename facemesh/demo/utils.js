@@ -35,6 +35,12 @@ export function distanceXY(a, b) {
     return Math.sqrt(Math.pow((a.x-b.x), 2) + Math.pow((a.y-b.y), 2));
 }
 
+export function distanceXYZ(a, b) {
+    // Computes the distance in the X-Y plane of points a and b
+    // a, b: Vector3
+    return a.distanceTo(b);
+}
+
 export class LogMeasurements {
 
     constructor(socket, numberOfFrames=50, filename=null) {
