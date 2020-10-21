@@ -27,6 +27,7 @@ import { Log, tensor2d } from '@tensorflow/tfjs-core';
 import { TLSSocket } from 'tls';
 
 import * as ms from './mask_sizing_tool';
+import * as fm from './face_measurements';
 import { MovingAverage, LogMeasurements } from './utils';
 
 
@@ -63,6 +64,9 @@ var logMeasurementsv1 = new LogMeasurements(socket, 1000);
 document.getElementById("scanButton").onclick = function() {logMeasurementsv1.initialise()};
 var logMeasurementsv2 = new LogMeasurements(socket, 1000);
 document.getElementById("scanButton").onclick = function() {logMeasurementsv2.initialise()};
+var logMeasurementsv3 = new LogMeasurements(socket, 1000);
+document.getElementById("scanButton").onclick = function() {logMeasurementsv3.initialise()};
+
 
 // Moving averages
 var headMeasuresv1Avg = {};
@@ -337,58 +341,33 @@ async function run() {
       let mask_sizes_v2 = ms.getMaskSizes(filtered_v2);
       ms.updateMaskSizeRecommend(mask_sizes_v2, "mask-size-recommend", colIndexv2);
 
-      /*
-      // Head measurements v3 - Same as v2, but uses alternative method for nose Depth
-      // -----------------------------------------------------------------------------
 
-      let scaleFactor = irisMeasures != null ? irisMeasures.scale : 1.0;
-      scaleFactor *= scaleFactorv3;
-      let noseWidth = getNoseWidth(scaledMesh, headPlanes, scaleFactor);
-      let faceWidth = getFaceWidth(scaledMesh, headPlanes, scaleFactor);
-      let noseDepth = getNoseDepth(scaledMesh, headPlanes, scaleFactor);
+      // Head measurements v3 
+      // --------------------
+      // NOTES: Method v3 is similar to v2, but uses alternative method for nose Depth
 
-      let noseDepthDiag = noseDepth;
+      let noseDepth = fm.calculateNoseDepth(lcsm, headPlanes.median);
       if (noseDepth) {
-        noseDepthDiag = Math.sqrt(Math.pow(noseWidth / 2.0, 2) + Math.pow(noseDepth, 2));
+        noseDepth *= irisMeasures.iris_diam_scale;
       }
 
-      let faceHeight = 0;
-      let headMeasuresv3 = {
-        'noseWidth' : noseWidth,
-        'noseDepth' : noseDepthDiag,
-        'faceHeight': faceHeight,
-        'faceWidth' : faceWidth
+      let noseDepth2 = fm.calculateNoseDepthTransverse(lcsm, headPlanes);
+      if (noseDepth2) {
+        noseDepth2 *= irisMeasures.iris_diam_scale;
       }
-      // Update html with head measures and iris measures
-      updateHeadMeasureValues(headMeasuresv3, "unfiltered", 3);
 
-      // Update time averaged
-      for (const [key, value] of Object.entries(headMeasuresv3)) {
-        if (value != null) {
-          movingAverage_headMeasuresv3[key].update(value);
-        }
+      let noseDepth3 = fm.calculateNoseDepthTransverse2(lcsm, headPlanes);
+      if (noseDepth3) {
+        noseDepth3 *= irisMeasures.iris_diam_scale;
       }
-      let filtered_v3 = {
-        'noseWidth' : movingAverage_headMeasuresv3.noseWidth.average(),
-        'noseDepth' : movingAverage_headMeasuresv3.noseDepth.average(),
-        'faceHeight': movingAverage_headMeasuresv2.faceHeight.average(), // Use v2
-        'faceWidth' : movingAverage_headMeasuresv2.faceWidth.average()   // Use v2
-      }
-      updateHeadMeasureValues(filtered_v3, "filtered", 3);
 
-      // Add mask size recommendation
-      let fh3 = movingAverage_headMeasuresv2.faceHeight.average(); // Use v2
-      let nw3 = movingAverage_headMeasuresv3.noseWidth.average();
-      let nd3 = movingAverage_headMeasuresv3.noseDepth.average();
-      let mask_sizes_v3 = {
-        'F20' : mask_sizer_F20(fh3),
-        'F30' : mask_sizer_F30(nw3, nd3),
-        'F30i': mask_sizer_F30i(nw3, nd3),
-        'N20' : mask_sizer_N20(nw3),
-        'N30i': mask_sizer_N30i(nw3, nd3)
-      }
-      updateMaskSizeRecommend(mask_sizes_v3, "mask-size-recommend", 3);
-      */
+      console.log(noseDepth, noseDepth2, noseDepth3);
+
+      let headMeasuresv3 = { 'noseDepth' : noseDepth,
+                             'noseDepth2': noseDepth2,
+                             'noseDepth3': noseDepth3 }
+      logMeasurementsv3.appendData([eulerAngles, headMeasuresv3, irisMeasures]);
+
     });
   }
   stats.end();

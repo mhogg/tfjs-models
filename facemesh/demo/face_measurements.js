@@ -1,6 +1,162 @@
 import * as THREE from 'three';
 
-function calculateNoseWidth(mesh, plane, tol = 1.5) {
+
+export function calculateNoseDepth(lmrks, plane, tol = 1.5) {
+    // NOTE: Use either the median or transverse planes for noseDepth
+    let ray_origin_z = 1e+6;
+    let ray_direction = new THREE.Vector3(0, 0, -1);
+    // Get points
+    let pnL = lmrks['nose_alarfacialgroove_L'];
+    let pnR = lmrks['nose_alarfacialgroove_R'];
+    let pnT = lmrks['nose_tip'];
+    let pnLRavg = pnL.clone().lerp(pnR, 0.5);
+    // Ray - nose tip
+    let nT_origin = new THREE.Vector3(pnT.x, pnT.y, ray_origin_z);
+    let nT_ray = new THREE.Ray(nT_origin, ray_direction);
+    // Ray - nose_LRavg
+    let nLRavg_origin = new THREE.Vector3(pnLRavg.x, pnLRavg.y, ray_origin_z);
+    let nLRavg_ray = new THREE.Ray(nLRavg_origin, ray_direction);
+    // Get intersection points
+    let noseDepth = null;
+    let is_perpendicular = THREE.MathUtils.radToDeg(Math.abs(plane.normal.dot(ray_direction))) < tol;
+    if (!is_perpendicular) {
+        if ((nT_ray.intersectsPlane(plane)) &&
+        (nLRavg_ray.intersectsPlane(plane))) {
+            // nose tip
+            let nT_intersect = new THREE.Vector3();
+            nT_ray.intersectPlane(plane, nT_intersect);
+            // nose_LRavg
+            let nLRavg_intersect = new THREE.Vector3();
+            nLRavg_ray.intersectPlane(plane, nLRavg_intersect);
+            // Get 3D distance between intersection points
+            noseDepth = nT_intersect.distanceTo(nLRavg_intersect);
+        }
+    }
+    return noseDepth;
+}
+
+export function calculateNoseDepthTransverse(lmrks, headPlanes, tol = 1.5) {
+    // Get points
+    let pnL = lmrks['nose_alarfacialgroove_L'];
+    let pnR = lmrks['nose_alarfacialgroove_R'];
+    let pnT = lmrks['nose_tip'];
+    let pnLRavg = pnL.clone().lerp(pnR, 0.5);
+    // Create frontal facing plane through pnLRavg
+    let planeNose = new THREE.Plane().setFromNormalAndCoplanarPoint(headPlanes.frontal.normal, pnLRavg);
+    // Project nose tip onto this plane 
+    let pnTproj = new THREE.Vector3();
+    planeNose.projectPoint(pnT, pnTproj);
+    // Create rays from pnT and pnTprojected to transverse plane
+    let plane = headPlanes.transverse;
+    let ray_origin_z = 1e+6;
+    let ray_direction = new THREE.Vector3(0, 0, -1);
+    // Ray - nose tip
+    let nT_origin = new THREE.Vector3(pnT.x, pnT.y, ray_origin_z);
+    let nT_ray = new THREE.Ray(nT_origin, ray_direction);
+    // Ray - nose tip projected
+    let nTp_origin = new THREE.Vector3(pnTproj.x, pnTproj.y, ray_origin_z);
+    let nTp_ray = new THREE.Ray(nTp_origin, ray_direction);
+    // Get intersection points
+    let noseDepth = null;
+    let is_perpendicular = THREE.MathUtils.radToDeg(Math.abs(plane.normal.dot(ray_direction))) < tol;
+    if (!is_perpendicular) {
+        if ((nT_ray.intersectsPlane(plane)) &&
+            (nTp_ray.intersectsPlane(plane))) {
+            // nose tip
+            let nT_intersect = new THREE.Vector3();
+            nT_ray.intersectPlane(plane, nT_intersect);
+            // nose_LRavg
+            let nTp_intersect = new THREE.Vector3();
+            nTp_ray.intersectPlane(plane, nTp_intersect);
+            // Get 3D distance between intersection points
+            noseDepth = nT_intersect.distanceTo(nTp_intersect);
+        }
+    }
+    return noseDepth;
+}
+
+export function calculateNoseDepthTransverse2(lmrks, headPlanes, tol = 1.5) {
+    // Get points
+    let pnL = lmrks['nose_alarfacialgroove_L'];
+    let pnR = lmrks['nose_alarfacialgroove_R'];
+    let pnT = lmrks['nose_tip'];
+    let pnLRavg = pnL.clone().lerp(pnR, 0.5);
+    // Create transverse facing plane through pnLRavg
+    let planeNose = new THREE.Plane().setFromNormalAndCoplanarPoint(headPlanes.transverse.normal, pnLRavg);
+    // Project nose tip onto this plane 
+    let pnTproj = new THREE.Vector3();
+    planeNose.projectPoint(pnT, pnTproj);
+
+    // TEST
+    console.log('Test');
+    console.log(pnLRavg);
+    console.log(pnT, pnTproj);
+    console.log(pnT.distanceTo(pnTproj));
+
+    // Create rays from pnT and pnTprojected to transverse plane
+    let plane = headPlanes.transverse;
+    let ray_origin_z = 1e+6;
+    let ray_direction = new THREE.Vector3(0, 0, -1);
+    // Ray - nose tip
+    let nT_origin = new THREE.Vector3(pnT.x, pnT.y, ray_origin_z);
+    let nT_ray = new THREE.Ray(nT_origin, ray_direction);
+    // Ray - nose tip projected
+    let nTp_origin = new THREE.Vector3(pnTproj.x, pnTproj.y, ray_origin_z);
+    let nTp_ray = new THREE.Ray(nTp_origin, ray_direction);
+    // Get intersection points
+    let noseDepth = null;
+    let is_perpendicular = THREE.MathUtils.radToDeg(Math.abs(plane.normal.dot(ray_direction))) < tol;
+    if (!is_perpendicular) {
+        if ((nT_ray.intersectsPlane(plane)) &&
+            (nTp_ray.intersectsPlane(plane))) {
+            // nose tip
+            let nT_intersect = new THREE.Vector3();
+            nT_ray.intersectPlane(plane, nT_intersect);
+            // nose_LRavg
+            let nTp_intersect = new THREE.Vector3();
+            nTp_ray.intersectPlane(plane, nTp_intersect);
+            // Get 3D distance between intersection points
+            noseDepth = nT_intersect.distanceTo(nTp_intersect);
+        }
+    }
+    return noseDepth;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  function calculateNoseWidth(mesh, plane, tol = 1.5) {
     let ray_origin_z = 1e+4;
     let ray_direction = new THREE.Vector3(0, 0, -1);
     // Get points
@@ -29,40 +185,6 @@ function calculateNoseWidth(mesh, plane, tol = 1.5) {
       }
     }
     return noseWidth;
-  }
-  
-  function calculateNoseDepth(mesh, plane, tol = 1.5) {
-    // NOTE: Use either the median or transverse planes for noseDepth
-    let ray_origin_z = 1e+6;
-    let ray_direction = new THREE.Vector3(0, 0, -1);
-    // Get points
-    let pnL = new THREE.Vector3().fromArray(mesh[LMRK.nose_alarfacialgroove_L]);
-    let pnR = new THREE.Vector3().fromArray(mesh[LMRK.nose_alarfacialgroove_R]);
-    let pnT = new THREE.Vector3().fromArray(mesh[LMRK.nose_tip]);
-    let pnLRavg = pnL.clone().lerp(pnR, 0.5);
-    // Ray - nose tip
-    let nT_origin = new THREE.Vector3(pnT.x, pnT.y, ray_origin_z);
-    let nT_ray = new THREE.Ray(nT_origin, ray_direction);
-    // Ray - nose_LRavg
-    let nLRavg_origin = new THREE.Vector3(pnLRavg.x, pnLRavg.y, ray_origin_z);
-    let nLRavg_ray = new THREE.Ray(nLRavg_origin, ray_direction);
-    // Get intersection points
-    let noseDepth = null;
-    let is_perpendicular = THREE.MathUtils.radToDeg(Math.abs(plane.normal.dot(ray_direction))) < tol;
-    if (!is_perpendicular) {
-      if ((nT_ray.intersectsPlane(plane)) &&
-        (nLRavg_ray.intersectsPlane(plane))) {
-        // nose tip
-        let nT_intersect = new THREE.Vector3();
-        nT_ray.intersectPlane(plane, nT_intersect);
-        // nose_LRavg
-        let nLRavg_intersect = new THREE.Vector3();
-        nLRavg_ray.intersectPlane(plane, nLRavg_intersect);
-        // Get 3D distance between intersection points
-        noseDepth = nT_intersect.distanceTo(nLRavg_intersect);
-      }
-    }
-    return noseDepth;
   }
   
   function calculateFaceHeight(mesh, plane, tol = 1.5) {
@@ -178,22 +300,3 @@ function calculateNoseWidth(mesh, plane, tol = 1.5) {
     return noseWidth;
   }
   
-  function getNoseDepth(mesh, headPlanes, irisScaleFactor) {
-  
-    // NOTE: noseDepth_m and noseDepth_t will not return a value if person
-    // is looking straight ahead.
-  
-    let noseDepth = calculateNoseDepth(mesh, headPlanes.median);
-    if (noseDepth) {
-      noseDepth *= irisScaleFactor;
-    }
-    // NOTE: ... is the spread operator. It unpacks an array.
-    //var data = [noseDepth_m, noseDepth_t];
-    //data = data.filter(function(i){ return i != null; });
-    //let noseDepth = Math.min(...data) * irisScaleFactor;
-  
-    //console.log(noseDepth_m * irisScaleFactor, noseDepth_t * irisScaleFactor);
-    //console.log(noseDepth);
-  
-    return noseDepth;
-  }
