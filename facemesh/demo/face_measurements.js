@@ -88,10 +88,10 @@ export function calculateNoseDepthTransverse2(lmrks, headPlanes, tol = 1.5) {
     planeNose.projectPoint(pnT, pnTproj);
 
     // TEST
-    console.log('Test');
-    console.log(pnLRavg);
-    console.log(pnT, pnTproj);
-    console.log(pnT.distanceTo(pnTproj));
+    //console.log('Test');
+    //console.log(pnLRavg);
+    //console.log(pnT, pnTproj);
+    //console.log(pnT.distanceTo(pnTproj));
 
     // Create rays from pnT and pnTprojected to transverse plane
     let plane = headPlanes.transverse;

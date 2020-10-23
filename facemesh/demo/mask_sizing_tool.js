@@ -6,7 +6,7 @@ import { mask_sizer_F20, mask_sizer_F30, mask_sizer_F30i,
 // Iris scaling
 const IRIS_DIAMETER_AVGERAGE = 11.7;
 
-function getCoordinateVectors(M) {
+export function getCoordinateVectors(M) {
     let m1 = new THREE.Vector3();
     let m2 = new THREE.Vector3();
     let m3 = new THREE.Vector3();
@@ -35,18 +35,20 @@ function getEyeAspectRatio(lmrks, direction='left') {
 
 export function getHeadPose(lmrks) {
     // Get fixed and moving csyses
-    let F = headCsysFixed();       // Fixed csys
-    let M = headCsysMoving(lmrks); // Moving csys
+    let [originF, RF] = headCsysFixed();       // Fixed csys
+    let [originM, RM] = headCsysMoving(lmrks); // Moving csys
     // Get coordinate vectors
-    let [f1, f2, f3] = getCoordinateVectors(F);
-    let [m1, m2, m3] = getCoordinateVectors(M);
+    let [f1, f2, f3] = getCoordinateVectors(RF);
+    let [m1, m2, m3] = getCoordinateVectors(RM);
     // Rotation matrix (4x4)
     let r1 = new THREE.Vector3().set(m1.dot(f1), m1.dot(f2), m1.dot(f3));
     let r2 = new THREE.Vector3().set(m2.dot(f1), m2.dot(f2), m2.dot(f3));
     let r3 = new THREE.Vector3().set(m3.dot(f1), m3.dot(f2), m3.dot(f3));
-    let RM = new THREE.Matrix4().makeBasis(r1, r2, r3);
+    let RM4 = new THREE.Matrix4().makeBasis(r1, r2, r3);
+    // Head coordinate system (origin and axis)
+    let headCsys = {origin : originM, xaxis : m1, yaxis : m2, zaxis : m3};
     // Euler angles - User for head pose
-    let eulerAnglesRad = new THREE.Euler().setFromRotationMatrix(RM, 'XYZ').toArray();
+    let eulerAnglesRad = new THREE.Euler().setFromRotationMatrix(RM4, 'XYZ').toArray();
     let eulerAngles = {};
     for (let i = 0; i < 3; i++) {
       let a = THREE.MathUtils.radToDeg(eulerAnglesRad[i]);
@@ -61,8 +63,8 @@ export function getHeadPose(lmrks) {
       'median'    : createPlaneThroughPoint(lmrks, m1),
       'transverse': createPlaneThroughPoint(lmrks, m2)
     };
-    // Return  
-    return [eulerAngles, headPlanes];
+    // Return
+    return [headCsys, eulerAngles, headPlanes];
 }
 
 export function getHeadMeasures(lmrks) {
@@ -137,7 +139,9 @@ function headCsysFromPoints(ptL, ptR, piL, piR) {
     v1.crossVectors(v2, v3).normalize();
     // Return matrix representing csys
     let basis = new THREE.Matrix4().makeBasis(v1, v2, v3);
-    return new THREE.Matrix3().setFromMatrix4(basis);
+    let R = new THREE.Matrix3().setFromMatrix4(basis);
+    // Return origin and coordinate directions
+    return [p0, R];
 }
 
 function headCsysFixed() {
@@ -158,7 +162,7 @@ function headCsysFixed() {
     return headCsysFromPoints(ptL, ptR, piL, piR);
 }
 
-function headCsysMoving(lmrks) {
+export function headCsysMoving(lmrks) {
     // Head coordinate system based on the updated mesh coordinates
     let csysPoints = [lmrks.tragion_L,  lmrks.tragion_R, 
                       lmrks.infraorb_L, lmrks.infraorb_R];

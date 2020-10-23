@@ -29,7 +29,11 @@ import { TLSSocket } from 'tls';
 import * as ms from './mask_sizing_tool';
 import * as fm from './face_measurements';
 import { MovingAverage, LogMeasurements } from './utils';
+import { face_verts, face_faces } from './data/mesh'
 
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 
 // socket IO
 const socket = io();
@@ -98,6 +102,8 @@ function drawPath(ctx, points, closePath) {
 
 let model, ctx, videoWidth, videoHeight, video, canvas,
   scatterGLHasInitialized = false, scatterGL, rafID;
+
+let container, renderer, scene, camera, controls;
 
 const VIDEO_SIZE = [500, 750]; // (w x h)
 const mobile = isMobile();
@@ -279,7 +285,7 @@ async function run() {
       plotLandmarks(lcsm);
 
       // Get head orientation (could use mesh or scaledMesh)
-      let [eulerAngles, headPlanes] = ms.getHeadPose(lcsm);
+      let [headCsys, eulerAngles, headPlanes] = ms.getHeadPose(lcsm);
       // Update head pose values in html
       ms.updateHeadPoseValues(eulerAngles);
 
@@ -288,6 +294,9 @@ async function run() {
       if (irisMeasures) {
         plotIrises(lcsm, irisMeasures);
       }
+
+      // Update model in threejs render window
+      animate(scaledMesh, irisMeasures.iris_diam_scale);
 
       // Head measurements v1 - Raw mesh data from facemesh model
       // --------------------------------------------------------
@@ -361,7 +370,7 @@ async function run() {
         noseDepth3 *= irisMeasures.iris_diam_scale;
       }
 
-      console.log(noseDepth, noseDepth2, noseDepth3);
+      //console.log(noseDepth, noseDepth2, noseDepth3);
 
       let headMeasuresv3 = { 'noseDepth' : noseDepth,
                              'noseDepth2': noseDepth2,
@@ -402,8 +411,161 @@ async function main() {
   ctx.strokeStyle = GREEN;
   ctx.lineWidth = 0.5;
 
+  init_threejs();
+
   model = await facemesh.load({ maxFaces: state.maxFaces });
   run();
 };
+
+let showPlanes = false;
+
+function init_threejs() {
+
+  // Display 3D model using Three.js
+  scene = new THREE.Scene();
+  let aspectRatio = window.innerWidth/window.innerHeight; // Just set to 1
+  camera = new THREE.PerspectiveCamera( 60, 1.0, 0.1, 1000 );
+
+  container = document.getElementById('threejs');
+  document.body.appendChild( container );
+
+  renderer = new THREE.WebGLRenderer();
+  renderer.setSize( 500, 500 );
+  container.appendChild( renderer.domElement );
+
+  // Add a light
+  {
+    const color = 0xFFFFFF;
+    const intensity = 1;
+    const light = new THREE.DirectionalLight(color, intensity);
+    light.position.set(-1, 2, 4);
+    scene.add(light);
+  }  
+
+  var geometry = new THREE.BoxGeometry( 1, 1, 1 );
+  var material = new THREE.MeshBasicMaterial({ color: 0x6c71b6 });
+  material.wireframe = true;
+
+  controls = new OrbitControls( camera, renderer.domElement );
+
+  camera.position.set(0,0,200);
+  controls.update();
+
+  var geometry = new THREE.Geometry();
+
+  face_verts.forEach(p => {
+    geometry.vertices.push(new THREE.Vector3(...p));
+  });
+
+  face_faces.forEach(f => {
+    geometry.faces.push(new THREE.Face3(f[0],f[1],f[2]));
+  });
+  geometry.computeFaceNormals();
+  //geometry.computeVertexNormals();
+
+  var mesh = new THREE.Mesh( geometry, material );
+  mesh.name = 'face_mesh';
+  scene.add( mesh );
+
+  // Add all landmarks to scene
+  const BLUE = 0x0000FF;
+  const GREEN = 0x32EEDB;
+  const RED = 0xFF2C35;
+  const WHITE = 0xFFFFFF;
+  let colors = {'infraorb_L' : BLUE,
+                'infraorb_R' : BLUE,
+                'sellion'    : BLUE,
+                'supramenton': BLUE,
+                'nose_alar_L': GREEN,
+                'nose_alar_R': GREEN,
+                'tragion_L'  : RED,
+                'tragion_R'  : RED,
+                'nose_alarfacialgroove_L': WHITE,
+                'nose_alarfacialgroove_R': WHITE,
+                'nose_tip'   : WHITE
+  };
+
+  for (const name of Object.keys(LANDMARKS)) {
+    let sphereGeometry = new THREE.SphereGeometry(1.5, 20, 20);
+
+    let color = Object.keys(colors).includes(name) ? colors[name] : RED;
+    let sphereMaterial = new THREE.MeshPhongMaterial({ color: color});
+    let sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
+    sphere.name = name;
+    scene.add(sphere);
+  }
+  // Global coordinate system
+  var axesHelper = new THREE.AxesHelper( 10 );
+  scene.add( axesHelper );
+
+  // Add plane		
+  let xplane = new THREE.PlaneHelper(new THREE.Plane(), 150, RED);
+  xplane.name = 'xplane';
+  let yplane = new THREE.PlaneHelper(new THREE.Plane(), 150, BLUE);
+  yplane.name = 'yplane';
+  let zplane = new THREE.PlaneHelper(new THREE.Plane(), 150, GREEN);
+  zplane.name = 'zplane'; 
+  
+  if (showPlanes) {
+    [xplane, yplane, zplane].forEach(plane => {
+      scene.add(plane);
+    });
+  }
+
+}
+
+function animate(mesh, scaleFactor=1.0) {
+
+  // Update vertices of facemesh 
+  let facemesh = scene.getObjectByName("face_mesh");
+  let vertices = facemesh.geometry.vertices;
+  for (let i=0; i<NUM_KEYPOINTS; i++) {
+    // QUESTIONS: 
+    // 1. When using the scaledMesh, do we use the iris to scale all coordinates,
+    //    or just the X and Y coordinates?
+    // 2. Should we be using the mesh or the scaledMesh?
+    vertices[i].set(...mesh[i]).addScalar(scaleFactor).negate();
+  }
+  let lmrks = {}
+  for (const [k,v] of Object.entries(LANDMARKS)) {
+    lmrks[k] = facemesh.geometry.vertices[v];
+  }
+  let [origin, axes] = ms.headCsysMoving(lmrks);
+  // Move face to the origin
+  for (let i=0; i<NUM_KEYPOINTS; i++) {
+    vertices[i].sub(origin)
+  }
+  facemesh.geometry.verticesNeedUpdate = true;
+  // Update landmarks
+  for (const [k,v] of Object.entries(LANDMARKS)) {
+    lmrks[k] = facemesh.geometry.vertices[v];
+  }
+  // Update head csys
+  [origin, axes] = ms.headCsysMoving(lmrks);
+  let [m1, m2, m3] = ms.getCoordinateVectors(axes);
+  let headCsys = {origin : origin, xaxis : m1, yaxis : m2, zaxis : m3};
+
+  // Update landmark positions
+  for (const [k,v] of Object.entries(LANDMARKS)) {
+    let lmrk = scene.getObjectByName(k);
+    let coords = facemesh.geometry.vertices[v].clone();
+    let translation = new THREE.Vector3().subVectors(coords, lmrk.position);
+    let axis = translation.clone().normalize();
+    let distance = translation.length();
+    lmrk.translateOnAxis(axis, distance);
+  }
+  // Update planes
+  if (showPlanes) {
+    let xplane = scene.getObjectByName("xplane");
+    xplane.plane.set(headCsys.xaxis, 0.0);
+    let yplane = scene.getObjectByName("yplane");
+    yplane.plane.set(headCsys.yaxis, 0.0);
+    let zplane = scene.getObjectByName("zplane");
+    zplane.plane.set(headCsys.zaxis, 0.0);
+  }
+
+  controls.update();
+  renderer.render( scene, camera );
+}
 
 main();
